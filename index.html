@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeAlpha Mini Social Media</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2 { color: #1877f2; margin-top: 0; }
+        input, textarea { width: 95%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; }
+        button { width: 100%; padding: 10px; background-color: #1877f2; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        button:hover { background-color: #166fe5; }
+        .hidden { display: none; }
+        .post-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); margin-top: 15px; width: 100%; max-width: 500px; border: 1px solid #e4e6eb; }
+        .post-user { font-weight: bold; color: #050505; }
+        .post-content { margin: 10px 0; color: #050505; }
+        .actions { display: flex; gap: 10px; margin-bottom: 10px; }
+        .like-btn { background-color: #e4e6eb; color: black; width: auto; padding: 5px 15px; }
+        .comment-section { border-top: 1px solid #eee; padding-top: 10px; }
+        .comment { background: #f0f2f5; padding: 5px 10px; border-radius: 6px; margin: 5px 0; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div id="authBox" class="container">
+        <h2 id="authTitle">Login</h2>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button id="mainAuthBtn" onclick="handleAuth()">Login</button>
+        <p style="text-align:center; font-size:14px; color:#555;">
+            Don't have an account? <a href="#" id="authToggleLink" onclick="toggleAuthMode(event)">Register here</a>
+        </p>
+    </div>
+
+    <div id="feedBox" class="container hidden">
+        <h2>Welcome, <span id="currentUser"></span>!</h2>
+        <textarea id="postContent" rows="3" placeholder="What's on your mind?"></textarea>
+        <button onclick="createPost()">Create Post</button>
+    </div>
+
+    <div id="postsContainer" style="width:100%; display:flex; flex-direction:column; align-items:center;"></div>
+
+    <script>
+        const API_URL = "http://localhost:5000/api";
+        let isLoginMode = true;
+        let loggedInUser = "";
+
+        function toggleAuthMode(e) {
+            e.preventDefault();
+            isLoginMode = !isLoginMode;
+            document.getElementById('authTitle').innerText = isLoginMode ? "Login" : "Register";
+            document.getElementById('mainAuthBtn').innerText = isLoginMode ? "Login" : "Register";
+            document.getElementById('authToggleLink').innerText = isLoginMode ? "Register here" : "Login here";
+        }
+
+        async function handleAuth() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const endpoint = isLoginMode ? "/login" : "/register";
+
+            if(!username || !password) return alert("Please fill in all fields!");
+
+            const res = await fetch(API_URL + endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+
+            alert(data.message);
+
+            if(res.ok && isLoginMode) {
+                loggedInUser = data.username;
+                document.getElementById('currentUser').innerText = loggedInUser;
+                document.getElementById('authBox').classList.add('hidden');
+                document.getElementById('feedBox').classList.remove('hidden');
+                loadPosts();
+            } else if (res.ok && !isLoginMode) {
+                isLoginMode = true;
+                document.getElementById('authTitle').innerText = "Login";
+                document.getElementById('mainAuthBtn').innerText = "Login";
+                document.getElementById('authToggleLink').innerText = "Register here";
+            }
+        }
+
+        async function createPost() {
+            const content = document.getElementById('postContent').value;
+            if(!content) return alert("Post content cannot be empty!");
+
+            const res = await fetch(API_URL + "/posts", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: loggedInUser, content })
+            });
+
+            if(res.ok) {
+                document.getElementById('postContent').value = "";
+                loadPosts();
+            }
+        }
+
+        async function loadPosts() {
+            const res = await fetch(API_URL + "/posts");
+            const posts = await res.json();
+            const container = document.getElementById('postsContainer');
+            container.innerHTML = "";
+
+            posts.forEach(post => {
+                const postEl = document.createElement('div');
+                postEl.className = 'post-card';
+                postEl.innerHTML = `
+                    <div class="post-user">@${post.username}</div>
+                    <div class="post-content">${post.content}</div>
+                    <div class="actions">
+                        <button class="like-btn" onclick="likePost(${post.id})">👍 ${post.likes} Likes</button>
+                    </div>
+                    <div class="comment-section">
+                        <div id="comments-${post.id}">
+                            ${post.comments.map(c => `<div class="comment"><b>@${c.username}:</b> ${c.text}</div>`).join('')}
+                        </div>
+                        <div style="display:flex; gap:5px; margin-top:5px;">
+                            <input type="text" id="comment-input-${post.id}" placeholder="Write a comment..." style="margin:0; padding:5px;">
+                            <button onclick="addComment(${post.id})" style="width:auto; padding:5px 10px;">Send</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(postEl);
+            });
+        }
+
+        async function likePost(id) {
+            const res = await fetch(`${API_URL}/posts/${id}/like`, { method: 'POST' });
+            if(res.ok) loadPosts();
+        }
+
+        async function addComment(id) {
+            const input = document.getElementById(`comment-input-${id}`);
+            const text = input.value;
+            if(!text) return;
+
+            const res = await fetch(`${API_URL}/posts/${id}/comment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: loggedInUser, commentText: text })
+            });
+
+            if(res.ok) {
+                input.value = "";
+                loadPosts();
+            }
+        }
+    </script>
+</body>
+</html>
